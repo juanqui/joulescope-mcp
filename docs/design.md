@@ -143,7 +143,8 @@ python -m pyjoulescope_driver scan
 python -m pyjoulescope_driver statistics --frequency 2 --duration 1
 python - <<'PY'
 from joulescope_mcp.service import Js220Service
-print(Js220Service().measure_energy(duration_s=2, interval_s=0.5, compact=True))
+r = Js220Service().measure_energy(duration_s=2, interval_s=0.5)
+print(r["total_charge_mAh"], r["average_current_mA"], [s["charge_mAh"] for s in r["samples"]])
 PY
 python scripts/hardware_smoke.py --duration-s 2 --interval-s 0.5
 ```
