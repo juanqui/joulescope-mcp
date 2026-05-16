@@ -58,3 +58,54 @@ Evidence:
 
 - `docs/adversarial-reviews.md`
 - `README.md`
+
+## README Installation Review 1: Stale Local-Venv Flow
+
+Finding: The README still centered local `.venv` commands even though the requested installation path was `uvx` and client-managed stdio server startup.
+
+Improvement: Reworked the top-level install flow around `uvx`, Git-based `uvx --from`, and local `uv --directory ... run joulescope-mcp` configurations.
+
+Evidence:
+
+- `README.md`
+
+## README Installation Review 2: Invalid Driver Check Command
+
+Finding: The troubleshooting section attempted to run `python -m pyjoulescope_driver` through `uvx --from joulescope-mcp`, which is not the right shape for a tool runner command.
+
+Improvement: Replaced it with `uvx --from pyjoulescope-driver pyjoulescope_driver scan` and verified the installed package exposes `pyjoulescope_driver`.
+
+Evidence:
+
+- `README.md`
+- `uvx --from . pyjoulescope_driver --help`
+
+## README Installation Review 3: Missing Source Traceability
+
+Finding: The README provided client snippets but did not show the reader what client documentation and MCP examples were used to choose each config shape.
+
+Improvement: Added a client reference matrix with at least two references per client, plus popular MCP setup examples reviewed.
+
+Evidence:
+
+- `README.md`
+
+## README Installation Review 4: Git Replacement Ambiguity
+
+Finding: The per-client sections show the PyPI command, but pre-PyPI users could easily miss how to split the GitHub install command into `command` and `args`.
+
+Improvement: Added GitHub and local checkout replacement blocks that can be dropped into any `mcpServers` or `servers` entry.
+
+Evidence:
+
+- `README.md`
+
+## README Installation Review 5: Hardware Contention Risk
+
+Finding: Installing the same JS220 server into several desktop clients can cause multiple always-on MCP server processes to compete for one USB device.
+
+Improvement: Added a client configuration warning to configure only one always-on client per physical JS220.
+
+Evidence:
+
+- `README.md`

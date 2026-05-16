@@ -4,62 +4,419 @@
 
 The primary tool is `measure_energy`: provide a duration and accumulation interval, and it returns total charge and energy plus one sample per interval. For example, `duration_s=15` and `interval_s=0.5` returns 30 interval samples along with totals such as `total_charge_mAh`.
 
-## Status
+## Quick Start
 
-This project is early but functional. It targets the JS220 through the current `pyjoulescope_driver` package and uses the official Python MCP SDK.
-
-## Requirements
-
-- Python 3.11 or newer
-- JouleScope JS220 connected over USB
-- `pyjoulescope_driver>=2.1.0`
-- `pyjls>=0.17` for `record_jls`
-- An MCP client that can run stdio servers
-
-On Linux, configure JouleScope udev rules as documented by JouleScope before running the server.
-
-## Install
-
-From this repository:
-
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install -e '.[dev]'
-```
-
-Verify that the driver can see the JS220:
-
-```bash
-.venv/bin/python -m pyjoulescope_driver scan
-.venv/bin/python -m pyjoulescope_driver statistics --frequency 2 --duration 1
-```
-
-## Run
-
-For MCP over stdio:
-
-```bash
-.venv/bin/joulescope-mcp
-```
-
-For streamable HTTP:
-
-```bash
-.venv/bin/joulescope-mcp --transport streamable-http --mount-path /mcp
-```
-
-Example MCP client command configuration:
+Install directly from GitHub with `uvx`:
 
 ```json
 {
   "mcpServers": {
     "joulescope-js220": {
-      "command": "/path/to/joulescope-mcp/.venv/bin/joulescope-mcp",
-      "args": []
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/juanqui/joulescope-mcp",
+        "joulescope-mcp"
+      ]
     }
   }
 }
+```
+
+After a PyPI release, the config becomes shorter:
+
+```json
+{
+  "mcpServers": {
+    "joulescope-js220": {
+      "command": "uvx",
+      "args": ["joulescope-mcp"]
+    }
+  }
+}
+```
+
+If you prefer SSH, use the same Git install shape with the SSH URL:
+
+```json
+{
+  "mcpServers": {
+    "joulescope-js220": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+ssh://git@github.com/juanqui/joulescope-mcp.git",
+        "joulescope-mcp"
+      ]
+    }
+  }
+}
+```
+
+Then ask your MCP client:
+
+```text
+Measure JouleScope power for 15 seconds with 500 ms intervals. Include voltage.
+```
+
+Expected result shape, with compact sample arrays shortened for display:
+
+```json
+{
+  "total_charge_mAh": 0.0051,
+  "total_energy_mWh": 0.019,
+  "average_current_mA": 1.23,
+  "average_voltage_v": 3.70,
+  "interval_count": 30,
+  "sample_charge_mAh": [0.00015, 0.00015, 0.00015]
+}
+```
+
+## Requirements
+
+- Python 3.11 or newer
+- JouleScope JS220 connected over USB
+- [`uv`](https://docs.astral.sh/uv/getting-started/installation/) for the recommended `uvx` install path
+- An MCP client that can run stdio servers
+
+The Python package installs `pyjoulescope_driver>=2.1.0` and `pyjls>=0.17`. On Linux, configure JouleScope udev rules as documented by JouleScope before running the server.
+
+`uvx` is an alias for `uv tool run`; it runs Python command-line tools in an isolated environment without a permanent install.
+
+## Install Options
+
+### Option 1: GitHub with `uvx`
+
+```bash
+uvx --from git+https://github.com/juanqui/joulescope-mcp joulescope-mcp
+```
+
+MCP JSON:
+
+```json
+{
+  "mcpServers": {
+    "joulescope-js220": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/juanqui/joulescope-mcp",
+        "joulescope-mcp"
+      ]
+    }
+  }
+}
+```
+
+Use this today, before a PyPI release.
+
+### Option 2: PyPI with `uvx`
+
+Use this after the package is released to PyPI:
+
+```bash
+uvx joulescope-mcp
+```
+
+MCP JSON:
+
+```json
+{
+  "mcpServers": {
+    "joulescope-js220": {
+      "command": "uvx",
+      "args": ["joulescope-mcp"]
+    }
+  }
+}
+```
+
+### Option 3: GitHub over SSH with `uvx`
+
+Use this if you prefer SSH or need GitHub SSH authentication:
+
+```bash
+uvx --from git+ssh://git@github.com/juanqui/joulescope-mcp.git joulescope-mcp
+```
+
+### Option 4: Local Checkout
+
+Use this while developing or when you want to pin the MCP server to a local clone:
+
+```bash
+git clone git@github.com:juanqui/joulescope-mcp.git
+cd joulescope-mcp
+uv sync --extra dev
+uv run joulescope-mcp
+```
+
+Verify that the driver can see the JS220:
+
+```bash
+uv run python -m pyjoulescope_driver scan
+uv run python -m pyjoulescope_driver statistics --frequency 2 --duration 1
+```
+
+Local checkout MCP JSON:
+
+```json
+{
+  "mcpServers": {
+    "joulescope-js220": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/absolute/path/to/joulescope-mcp",
+        "run",
+        "joulescope-mcp"
+      ]
+    }
+  }
+}
+```
+
+Use an absolute path. Several MCP clients launch servers with a limited `PATH`; if `uv` or `uvx` is not found, replace `"command": "uvx"` or `"command": "uv"` with the full executable path from `which uvx` or `which uv`.
+
+## Client Configuration
+
+Most MCP clients use one of two JSON shapes:
+
+- `mcpServers`: Claude Desktop, Claude Code project config, Cursor, Windsurf, Cline, and many other clients
+- `servers`: VS Code / GitHub Copilot MCP config
+
+Choose one install command:
+
+| Current situation | Use this command in client configs |
+| --- | --- |
+| Before a PyPI release | `uvx --from git+https://github.com/juanqui/joulescope-mcp joulescope-mcp` |
+| After a PyPI release | `uvx joulescope-mcp` |
+| Local development checkout | `uv --directory /absolute/path/to/joulescope-mcp run joulescope-mcp` |
+
+The snippets below show the PyPI form because it is the cleanest long-term install path. Until the PyPI release, replace the command and args with the GitHub form.
+
+GitHub replacement:
+
+```json
+{
+  "command": "uvx",
+  "args": [
+    "--from",
+    "git+https://github.com/juanqui/joulescope-mcp",
+    "joulescope-mcp"
+  ]
+}
+```
+
+Local checkout replacement:
+
+```json
+{
+  "command": "uv",
+  "args": [
+    "--directory",
+    "/absolute/path/to/joulescope-mcp",
+    "run",
+    "joulescope-mcp"
+  ]
+}
+```
+
+Configure only one always-on client for a physical JS220. Many desktop clients auto-start configured MCP servers, and the JS220 should not be shared between multiple MCP server processes.
+
+### Claude Code
+
+Recommended global install:
+
+```bash
+claude mcp add joulescope-js220 -- uvx joulescope-mcp
+claude mcp list
+```
+
+GitHub install:
+
+```bash
+claude mcp add joulescope-js220 -- uvx --from git+https://github.com/juanqui/joulescope-mcp joulescope-mcp
+```
+
+Project `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "joulescope-js220": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["joulescope-mcp"]
+    }
+  }
+}
+```
+
+Inside Claude Code, run `/mcp` to inspect server status.
+
+### Claude Desktop
+
+Edit:
+
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "joulescope-js220": {
+      "command": "uvx",
+      "args": ["joulescope-mcp"]
+    }
+  }
+}
+```
+
+Restart Claude Desktop after editing the file.
+
+### Codex
+
+Recommended global install:
+
+```bash
+codex mcp add joulescope-js220 -- uvx joulescope-mcp
+codex mcp list
+```
+
+GitHub install:
+
+```bash
+codex mcp add joulescope-js220 -- uvx --from git+https://github.com/juanqui/joulescope-mcp joulescope-mcp
+```
+
+Direct `~/.codex/config.toml` entry:
+
+```toml
+[mcp_servers.joulescope-js220]
+command = "uvx"
+args = ["joulescope-mcp"]
+```
+
+### Cursor
+
+Global config:
+
+- macOS/Linux: `~/.cursor/mcp.json`
+- Windows: `%USERPROFILE%\.cursor\mcp.json`
+
+Project config:
+
+- `.cursor/mcp.json`
+
+```json
+{
+  "mcpServers": {
+    "joulescope-js220": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["joulescope-mcp"]
+    }
+  }
+}
+```
+
+Cursor also supports adding MCP servers from Settings. After changing the config, restart Cursor or refresh MCP tools from the MCP settings panel.
+
+### VS Code / GitHub Copilot Agent Mode
+
+Workspace config:
+
+- `.vscode/mcp.json`
+
+User config:
+
+- Run `MCP: Open User Configuration` from the Command Palette.
+
+```json
+{
+  "servers": {
+    "joulescope-js220": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["joulescope-mcp"]
+    }
+  }
+}
+```
+
+Command-line install:
+
+```bash
+code --add-mcp '{"name":"joulescope-js220","type":"stdio","command":"uvx","args":["joulescope-mcp"]}'
+```
+
+### Windsurf
+
+Edit:
+
+- macOS/Linux: `~/.codeium/windsurf/mcp_config.json`
+- Windows: `%USERPROFILE%\.codeium\windsurf\mcp_config.json`
+
+```json
+{
+  "mcpServers": {
+    "joulescope-js220": {
+      "command": "uvx",
+      "args": ["joulescope-mcp"]
+    }
+  }
+}
+```
+
+Windsurf Cascade has a total enabled-tool limit. If you use many MCP servers, disable tools you do not need.
+
+### Cline
+
+CLI install:
+
+```bash
+cline mcp add joulescope-js220 -- uvx joulescope-mcp
+```
+
+Manual config:
+
+- CLI default: `~/.cline/data/settings/cline_mcp_settings.json`
+- VS Code extension: open the MCP Servers panel, then choose **Configure MCP Servers**
+
+```json
+{
+  "mcpServers": {
+    "joulescope-js220": {
+      "command": "uvx",
+      "args": ["joulescope-mcp"],
+      "disabled": false,
+      "alwaysAllow": []
+    }
+  }
+}
+```
+
+## Run as HTTP
+
+Most local MCP clients should use stdio. If you need streamable HTTP:
+
+```bash
+uvx joulescope-mcp --transport streamable-http --mount-path /mcp
+```
+
+## Troubleshooting
+
+- **Client cannot find `uvx`**: use the absolute path from `which uvx`.
+- **No JouleScope found**: run your configured server command directly in a terminal to check startup errors, then run `uvx --from pyjoulescope-driver pyjoulescope_driver scan` to verify the official driver can see the JS220.
+- **Permission denied on Linux**: install JouleScope udev rules and reconnect the JS220.
+- **Multiple clients fight over the device**: run only one MCP client/server process against a JS220 at a time.
+- **GitHub install fails**: verify `git clone https://github.com/juanqui/joulescope-mcp` works first.
+- **Tools changed but client still shows old tools**: restart the client or reset/reload MCP tools.
+
+Quick local health check:
+
+```bash
+uv run python scripts/hardware_smoke.py --duration-s 2 --interval-s 0.5
 ```
 
 ## Agent Workflow
@@ -197,30 +554,36 @@ The server opens a short-lived JouleScope driver connection per tool call and se
 
 ## Development
 
+Set up a local checkout:
+
+```bash
+uv sync --extra dev
+```
+
 Run tests:
 
 ```bash
-.venv/bin/python -m pytest
+uv run python -m pytest
 ```
 
 Run linting:
 
 ```bash
-.venv/bin/python -m ruff check .
+uv run python -m ruff check .
 ```
 
 Build the package:
 
 ```bash
-.venv/bin/python -m build
+uv run python -m build
 ```
 
 Hardware smoke test:
 
 ```bash
-.venv/bin/python -m pyjoulescope_driver scan
-.venv/bin/python -m pyjoulescope_driver statistics --frequency 2 --duration 1
-.venv/bin/python - <<'PY'
+uv run python -m pyjoulescope_driver scan
+uv run python -m pyjoulescope_driver statistics --frequency 2 --duration 1
+uv run python - <<'PY'
 from joulescope_mcp.service import Js220Service
 r = Js220Service().measure_energy(duration_s=2, interval_s=0.5)
 print(r["total_charge_mAh"], r["average_current_mA"], [s["charge_mAh"] for s in r["samples"]])
@@ -230,14 +593,14 @@ PY
 Repeatable hardware smoke script:
 
 ```bash
-.venv/bin/python scripts/hardware_smoke.py --duration-s 2 --interval-s 0.5
+uv run python scripts/hardware_smoke.py --duration-s 2 --interval-s 0.5
 ```
 
 ## Design
 
 See [docs/design.md](docs/design.md) for the MCP design, measurement semantics, tool rationale, and verification strategy.
 See [docs/testing.md](docs/testing.md) for repeatable software, MCP, and hardware checks.
-See [docs/adversarial-reviews.md](docs/adversarial-reviews.md) for the initial five-pass review log.
+See [docs/adversarial-reviews.md](docs/adversarial-reviews.md) for the implementation and README review logs.
 
 ## References
 
@@ -246,6 +609,26 @@ See [docs/adversarial-reviews.md](docs/adversarial-reviews.md) for the initial f
 - JouleScope driver source: <https://github.com/jetperch/joulescope_driver>
 - JouleScope `dut_power.py` example: <https://github.com/jetperch/pyjoulescope_examples/blob/main/bin/dut_power.py>
 - MCP Python SDK: <https://github.com/modelcontextprotocol/python-sdk>
+- `uvx` tool execution: <https://docs.astral.sh/uv/concepts/tools/>
+
+Client configuration references used for the examples above:
+
+| Client | References |
+| --- | --- |
+| Claude Code | [Claude Code MCP docs](https://code.claude.com/docs/en/mcp), [Claude Code support FAQ](https://support.claude.com/en/articles/14554922-claude-code-user-faq) |
+| Claude Desktop | [MCP local server quickstart](https://modelcontextprotocol.io/docs/develop/connect-local-servers), [Anthropic custom connectors note](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp) |
+| Codex | [OpenAI Docs MCP Codex quickstart](https://developers.openai.com/learn/docs-mcp), [Codex MCP interface notes](https://github.com/openai/codex/blob/main/codex-rs/docs/codex_mcp_interface.md), plus local verification with `codex mcp add --help` and `codex mcp list` |
+| Cursor | [Cursor MCP configuration docs](https://docs.cursor.com/advanced/model-context-protocol), [Cursor CLI MCP docs](https://docs.cursor.com/cli/mcp) |
+| VS Code / GitHub Copilot | [Add and manage MCP servers in VS Code](https://code.visualstudio.com/docs/copilot/customization/mcp-servers), [VS Code MCP configuration reference](https://code.visualstudio.com/docs/copilot/reference/mcp-configuration) |
+| Windsurf | [Windsurf MCP integration docs](https://docs.windsurf.com/windsurf/cascade/mcp), [Windsurf MCP client guide from Grafana](https://grafana.com/docs/grafana/latest/developer-resources/mcp/clients/windsurf/) |
+| Cline | [Cline CLI configuration](https://docs.cline.bot/getting-started/config), [Cline MCP overview](https://docs.cline.bot/mcp/mcp-overview) |
+
+Popular MCP setup examples reviewed:
+
+- GitHub MCP Server installation guides: <https://github.com/github/github-mcp-server/tree/main/docs/installation-guides>
+- Context7 MCP installation guide: <https://context7.mintlify.dev/docs/installation>
+- MCP local server quickstart: <https://modelcontextprotocol.io/docs/develop/connect-local-servers>
+- OpenAI Docs MCP client examples: <https://developers.openai.com/learn/docs-mcp>
 
 ## License
 
