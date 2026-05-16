@@ -63,7 +63,7 @@ def create_server(service: Js220Service | None = None) -> FastMCP:
         title="Measure energy over time",
         description=(
             "Measure JS220 charge and energy over duration_s using interval_s accumulation. "
-            "Returns total charge/energy plus one sample per interval, including mAh and mWh."
+            "Returns total charge/energy plus one sample per interval, including mAh, mWh, and optional voltage arrays."
         ),
         annotations=read_only,
         structured_output=True,
@@ -74,6 +74,7 @@ def create_server(service: Js220Service | None = None) -> FastMCP:
         device_path: str | None = None,
         configure_auto_range: bool = True,
         compact: bool = False,
+        include_voltage: bool = False,
     ) -> dict[str, Any]:
         try:
             result = service.measure_energy(
@@ -85,6 +86,10 @@ def create_server(service: Js220Service | None = None) -> FastMCP:
             if compact:
                 result["sample_charge_mAh"] = compact_samples(result["samples"], "charge_mAh")
                 result["sample_energy_mWh"] = compact_samples(result["samples"], "energy_mWh")
+                if include_voltage:
+                    result["sample_voltage_avg_v"] = compact_samples(result["samples"], "voltage.avg")
+                    result["sample_voltage_min_v"] = compact_samples(result["samples"], "voltage.min")
+                    result["sample_voltage_max_v"] = compact_samples(result["samples"], "voltage.max")
                 result["samples"] = []
             return result
         except (JoulescopeMcpError, ValueError) as exc:
@@ -132,6 +137,71 @@ def create_server(service: Js220Service | None = None) -> FastMCP:
                 voltage_range_mode=voltage_range_mode,
                 current_range=current_range,
                 voltage_range=voltage_range,
+            )
+        except JoulescopeMcpError as exc:
+            raise _tool_error(exc) from exc
+
+    @mcp.tool(
+        title="Get target power status",
+        description=(
+            "Report whether JS220 target/DUT power is connected. The JS220 controls this by "
+            "setting current range mode off or auto/manual."
+        ),
+        annotations=read_only,
+        structured_output=True,
+    )
+    def target_power_status(device_path: str | None = None) -> dict[str, Any]:
+        try:
+            return service.target_power_status(device_path=device_path)
+        except JoulescopeMcpError as exc:
+            raise _tool_error(exc) from exc
+
+    @mcp.tool(
+        title="Set target power",
+        description=(
+            "Connect or disconnect power to the DUT through the JS220 current path. "
+            "power_on=false sets current range mode to off; power_on=true restores auto/manual."
+        ),
+        annotations=write_tool,
+        structured_output=True,
+    )
+    def set_target_power(
+        power_on: bool,
+        device_path: str | None = None,
+        on_mode: Literal["auto", "manual"] = "auto",
+        settle_ms: int = 0,
+    ) -> dict[str, Any]:
+        try:
+            return service.set_target_power(
+                power_on=power_on,
+                device_path=device_path,
+                on_mode=on_mode,
+                settle_ms=settle_ms,
+            )
+        except JoulescopeMcpError as exc:
+            raise _tool_error(exc) from exc
+
+    @mcp.tool(
+        title="Cycle target power",
+        description=(
+            "Power-cycle the DUT by setting JS220 current range mode off, waiting off_ms, "
+            "then restoring auto/manual and optionally waiting settle_ms."
+        ),
+        annotations=write_tool,
+        structured_output=True,
+    )
+    def cycle_target_power(
+        off_ms: int,
+        device_path: str | None = None,
+        on_mode: Literal["auto", "manual"] = "auto",
+        settle_ms: int = 0,
+    ) -> dict[str, Any]:
+        try:
+            return service.cycle_target_power(
+                off_ms=off_ms,
+                device_path=device_path,
+                on_mode=on_mode,
+                settle_ms=settle_ms,
             )
         except JoulescopeMcpError as exc:
             raise _tool_error(exc) from exc

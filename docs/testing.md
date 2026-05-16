@@ -40,7 +40,12 @@ async def main():
             print([tool.name for tool in tools.tools])
             result = await session.call_tool(
                 "measure_energy",
-                {"duration_s": 1.0, "interval_s": 0.5, "compact": True},
+                {
+                    "duration_s": 1.0,
+                    "interval_s": 0.5,
+                    "compact": True,
+                    "include_voltage": True,
+                },
             )
             print(result.content[0].text)
 
@@ -65,3 +70,19 @@ The script prints JSON containing:
 - compact per-interval charge and energy arrays
 
 Only run one hardware smoke or MCP server process against a JS220 at a time.
+
+## Target Power Cycle Check
+
+This check intentionally disconnects the DUT, then restores power:
+
+```bash
+python - <<'PY'
+from joulescope_mcp.service import Js220Service
+svc = Js220Service()
+print(svc.target_power_status())
+print(svc.cycle_target_power(off_ms=250, settle_ms=250))
+print(svc.target_power_status())
+PY
+```
+
+Do not run this check while the target device is performing work that cannot tolerate a power interruption.

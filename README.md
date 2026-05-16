@@ -91,6 +91,7 @@ The response includes:
 - `actual_interval_s`: average actual interval captured by the JS220
 - `sample_charge_mAh`: compact per-interval charge list when `compact=true`
 - `sample_energy_mWh`: compact per-interval energy list when `compact=true`
+- `sample_voltage_avg_v`, `sample_voltage_min_v`, `sample_voltage_max_v`: compact per-interval voltage lists when `compact=true` and `include_voltage=true`
 - `samples`: full per-interval statistics when `compact=false`
 
 If `duration_s` is not an exact multiple of `interval_s`, the server rounds up to the next full interval and reports both `requested_duration_s` and `actual_duration_s`.
@@ -116,6 +117,7 @@ Parameters:
 - `device_path`: optional explicit device path, such as `u/js220/005920`
 - `configure_auto_range`: defaults to true; configures current and voltage range modes to `auto`
 - `compact`: returns compact charge and energy arrays and omits full samples
+- `include_voltage`: when used with `compact`, also returns per-interval voltage arrays
 
 Implementation detail: the JS220 publishes per-interval `current.integral` in coulombs and `power.integral` in joules. The server sums those integrals, then also converts charge to mAh and energy to mWh.
 
@@ -126,6 +128,30 @@ Frequency-based wrapper around `measure_energy`. Use when you want `frequency_hz
 ### `configure_frontend`
 
 Sets current and voltage range modes and optional range selections. Use `auto` for normal measurements.
+
+### `target_power_status`
+
+Reports whether the JS220 target/DUT power path is connected. For JS220, DUT power is controlled through `s/i/range/mode`: `off` disconnects Current+ from Current-, while `auto` or `manual` connects the target path for measurement.
+
+### `set_target_power`
+
+Connects or disconnects power to the DUT through the JS220 current path.
+
+Parameters:
+
+- `power_on`: true to connect target power, false to disconnect it
+- `on_mode`: `auto` by default, or `manual`
+- `settle_ms`: optional wait after changing state
+
+### `cycle_target_power`
+
+Power-cycles the DUT by setting target power off, waiting, then restoring target power.
+
+Parameters:
+
+- `off_ms`: hold-off time in milliseconds
+- `on_mode`: `auto` by default, or `manual`
+- `settle_ms`: optional wait after restoring power
 
 ### `record_jls`
 
@@ -167,7 +193,7 @@ The server opens a short-lived JouleScope driver connection per tool call and se
 - Maximum returned intervals: 10,000
 - Statistics collection times out if the JS220 does not publish the expected samples
 
-`publish_topic` is intentionally marked as a write/destructive-capable MCP tool because arbitrary topics can alter hardware behavior. Agents should use it only when they know the driver topic semantics.
+`set_target_power`, `cycle_target_power`, `record_jls`, and `publish_topic` are marked as write/destructive-capable MCP tools. `cycle_target_power` intentionally interrupts the DUT. Agents should use it only when an interruption is part of the requested test.
 
 ## Development
 
@@ -218,6 +244,7 @@ See [docs/adversarial-reviews.md](docs/adversarial-reviews.md) for the initial f
 - JouleScope downloads and documentation: <https://www.joulescope.com/pages/downloads>
 - JouleScope driver documentation: <https://joulescope-driver.readthedocs.io/>
 - JouleScope driver source: <https://github.com/jetperch/joulescope_driver>
+- JouleScope `dut_power.py` example: <https://github.com/jetperch/pyjoulescope_examples/blob/main/bin/dut_power.py>
 - MCP Python SDK: <https://github.com/modelcontextprotocol/python-sdk>
 
 ## License

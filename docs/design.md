@@ -36,6 +36,7 @@ The server sets `scnt = round(1_000_000 * interval_s)`, subscribes to statistics
 - total charge as coulombs and mAh
 - total energy as joules and mWh
 - average current and power over the actual captured duration
+- average, minimum, and maximum voltage over the captured duration
 - the average actual interval reported by the statistics payload
 - per-interval averages, standard deviation, min, max, peak-to-peak, and integrals
 
@@ -62,6 +63,9 @@ If `duration_s` is not a multiple of `interval_s`, the server captures the next 
 - `measure_energy`: preferred tool for power optimization loops
 - `capture_statistics`: same measurement path, parameterized by frequency
 - `configure_frontend`: typed JS220 current/voltage range setup
+- `target_power_status`: typed target/DUT power state query
+- `set_target_power`: typed target/DUT power connect/disconnect
+- `cycle_target_power`: typed target/DUT power cycle with millisecond hold-off and settle waits
 
 ### Discovery tools
 
@@ -80,6 +84,22 @@ If `duration_s` is not a multiple of `interval_s`, the server captures the next 
 - `publish_topic`
 
 `publish_topic` is intentionally exposed because the JouleScope driver topic tree is broad and evolves. It is marked as write/destructive-capable in MCP annotations, and documentation directs agents to prefer typed tools first.
+
+## Target Power Control
+
+The JS220 target/DUT power path is controlled by the current range mode topic:
+
+```text
+<device>/s/i/range/mode
+```
+
+The server follows the official `dut_power.py` example from `pyjoulescope_examples`:
+
+- `off`: disconnects Current+ from Current-
+- `auto`: connects the current path and enables autoranging
+- `manual`: connects the current path in manual range mode
+
+`cycle_target_power(off_ms, settle_ms)` holds `off` for the requested number of milliseconds, restores `auto` or `manual`, then optionally waits for the target to settle.
 
 ## Resource Model
 

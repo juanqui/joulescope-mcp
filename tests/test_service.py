@@ -50,6 +50,7 @@ class FakeDriver:
     def __init__(self, devices: list[str] | None = None, stats: list[dict[str, Any]] | None = None) -> None:
         self.devices = devices or ["u/js220/005920"]
         self.stats = stats or []
+        self.current_range_mode: int | str = 4
         self.published: list[tuple[str, Any]] = []
         self.opened: list[tuple[str, str | None]] = []
         self.closed: list[str] = []
@@ -71,6 +72,8 @@ class FakeDriver:
         self.closed.append(device)
 
     def query(self, topic: str) -> Any:
+        if topic.endswith("/s/i/range/mode"):
+            return self.current_range_mode
         if topic.endswith("/c/hw/version"):
             return 0x01020003
         if topic.endswith("/c/fw/version"):
@@ -81,6 +84,8 @@ class FakeDriver:
 
     def publish(self, topic: str, value: Any) -> None:
         self.published.append((topic, value))
+        if topic.endswith("/s/i/range/mode"):
+            self.current_range_mode = value
         if topic.endswith("/s/stats/ctrl") and value == 1:
             for sub_topic, _flags, callback in list(self.subscriptions):
                 if sub_topic.endswith("/s/stats/value"):
@@ -135,6 +140,9 @@ def test_measure_energy_returns_totals_and_interval_samples() -> None:
     assert result["total_charge_mAh"] == pytest.approx(0.0015)
     assert result["total_energy_j"] == pytest.approx(0.018)
     assert result["total_energy_mWh"] == pytest.approx(0.005)
+    assert result["average_voltage_v"] == pytest.approx(3.7)
+    assert result["voltage_min_v"] == pytest.approx(3.69)
+    assert result["voltage_max_v"] == pytest.approx(3.71)
     assert [sample["charge_mAh"] for sample in result["samples"]] == pytest.approx([0.0005, 0.001])
     assert [sample["relative_start_s"] for sample in result["samples"]] == pytest.approx([0.0, 0.5])
     assert [sample["relative_end_s"] for sample in result["samples"]] == pytest.approx([0.5, 1.0])
@@ -197,6 +205,43 @@ def test_query_and_publish_topics_accept_relative_topics() -> None:
     assert svc.query_topic("c/fw/version")["topic"] == "u/js220/005920/c/fw/version"
     assert svc.publish_topic("s/led/en", 0)["topic"] == "u/js220/005920/s/led/en"
     assert ("u/js220/005920/s/led/en", 0) in driver.published
+
+
+def test_target_power_status_reports_current_range_mode() -> None:
+    driver = FakeDriver()
+    driver.current_range_mode = 0
+    result = service_with(driver).target_power_status()
+    assert result["power_on"] is False
+    assert result["current_range_mode"] == "off"
+    assert result["control_topic"] == "u/js220/005920/s/i/range/mode"
+
+
+def test_set_target_power_controls_current_range_mode() -> None:
+    driver = FakeDriver()
+    result = service_with(driver).set_target_power(False)
+    assert result["requested_power_on"] is False
+    assert result["power_on"] is False
+    assert result["before_current_range_mode"] == "auto"
+    assert result["after_current_range_mode"] == "off"
+    assert ("u/js220/005920/s/i/range/mode", "off") in driver.published
+
+
+def test_cycle_target_power_turns_off_then_on() -> None:
+    driver = FakeDriver()
+    result = service_with(driver).cycle_target_power(off_ms=0, settle_ms=0)
+    assert result["power_on"] is True
+    assert result["before_current_range_mode"] == "auto"
+    assert result["off_current_range_mode"] == "off"
+    assert result["after_current_range_mode"] == "auto"
+    assert driver.published[:2] == [
+        ("u/js220/005920/s/i/range/mode", "off"),
+        ("u/js220/005920/s/i/range/mode", "auto"),
+    ]
+
+
+def test_cycle_target_power_rejects_negative_off_ms() -> None:
+    with pytest.raises(JoulescopeMcpError, match="off_ms must be >= 0"):
+        service_with(FakeDriver()).cycle_target_power(off_ms=-1)
 
 
 def test_record_jls_uses_record_factory(tmp_path: Path) -> None:

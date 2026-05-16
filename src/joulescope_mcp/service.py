@@ -305,6 +305,13 @@ class Js220Service:
         actual_duration_s = sum(sample["duration_s"] for sample in samples)
         avg_current_a = total_charge_c / actual_duration_s if actual_duration_s else 0.0
         avg_power_w = total_energy_j / actual_duration_s if actual_duration_s else 0.0
+        voltage_avg_v = (
+            sum(sample["voltage"]["avg"] * sample["duration_s"] for sample in samples) / actual_duration_s
+            if actual_duration_s
+            else 0.0
+        )
+        voltage_min_v = min((sample["voltage"]["min"] for sample in samples), default=0.0)
+        voltage_max_v = max((sample["voltage"]["max"] for sample in samples), default=0.0)
 
         return {
             "device_path": device,
@@ -322,6 +329,9 @@ class Js220Service:
             "average_current_mA": avg_current_a * 1000.0,
             "average_power_w": avg_power_w,
             "average_power_mW": avg_power_w * 1000.0,
+            "average_voltage_v": voltage_avg_v,
+            "voltage_min_v": voltage_min_v,
+            "voltage_max_v": voltage_max_v,
             "samples": samples,
         }
 
@@ -368,6 +378,119 @@ class Js220Service:
             device_path=device_path,
             configure_auto_range=configure_auto_range,
         )
+
+    def target_power_status(self, device_path: str | None = None) -> dict[str, Any]:
+        with self._driver_session() as driver:
+            device = self._select_device(driver, device_path=device_path)
+            topic = f"{device}/s/i/range/mode"
+            driver.open(device, mode="restore")
+            try:
+                mode = driver.query(topic)
+            finally:
+                driver.close(device)
+        mode_name = self._current_range_mode_name(mode)
+        return {
+            "device_path": device,
+            "power_on": mode_name != "off",
+            "current_range_mode": mode_name,
+            "raw_current_range_mode": mode,
+            "control_topic": topic,
+        }
+
+    def set_target_power(
+        self,
+        power_on: bool,
+        device_path: str | None = None,
+        on_mode: str = "auto",
+        settle_ms: int = 0,
+    ) -> dict[str, Any]:
+        if on_mode not in {"auto", "manual"}:
+            raise JoulescopeMcpError("on_mode must be 'auto' or 'manual'")
+        settle_ms = self._validate_ms(settle_ms, "settle_ms", max_ms=60_000)
+        target_mode = on_mode if power_on else "off"
+        with self._driver_session() as driver:
+            device = self._select_device(driver, device_path=device_path)
+            topic = f"{device}/s/i/range/mode"
+            driver.open(device, mode="restore")
+            try:
+                before_raw = driver.query(topic)
+                driver.publish(topic, target_mode)
+                if settle_ms:
+                    time.sleep(settle_ms / 1000.0)
+                after_raw = driver.query(topic)
+            finally:
+                driver.close(device)
+        return {
+            "device_path": device,
+            "power_on": self._current_range_mode_name(after_raw) != "off",
+            "requested_power_on": bool(power_on),
+            "before_current_range_mode": self._current_range_mode_name(before_raw),
+            "after_current_range_mode": self._current_range_mode_name(after_raw),
+            "raw_before_current_range_mode": before_raw,
+            "raw_after_current_range_mode": after_raw,
+            "settle_ms": settle_ms,
+            "control_topic": topic,
+        }
+
+    def cycle_target_power(
+        self,
+        off_ms: int,
+        device_path: str | None = None,
+        on_mode: str = "auto",
+        settle_ms: int = 0,
+    ) -> dict[str, Any]:
+        off_ms = self._validate_ms(off_ms, "off_ms", max_ms=3_600_000)
+        settle_ms = self._validate_ms(settle_ms, "settle_ms", max_ms=3_600_000)
+        if on_mode not in {"auto", "manual"}:
+            raise JoulescopeMcpError("on_mode must be 'auto' or 'manual'")
+        with self._driver_session() as driver:
+            device = self._select_device(driver, device_path=device_path)
+            topic = f"{device}/s/i/range/mode"
+            driver.open(device, mode="restore")
+            try:
+                before_raw = driver.query(topic)
+                driver.publish(topic, "off")
+                if off_ms:
+                    time.sleep(off_ms / 1000.0)
+                off_raw = driver.query(topic)
+                driver.publish(topic, on_mode)
+                if settle_ms:
+                    time.sleep(settle_ms / 1000.0)
+                after_raw = driver.query(topic)
+            finally:
+                driver.close(device)
+        return {
+            "device_path": device,
+            "power_on": self._current_range_mode_name(after_raw) != "off",
+            "before_current_range_mode": self._current_range_mode_name(before_raw),
+            "off_current_range_mode": self._current_range_mode_name(off_raw),
+            "after_current_range_mode": self._current_range_mode_name(after_raw),
+            "raw_before_current_range_mode": before_raw,
+            "raw_off_current_range_mode": off_raw,
+            "raw_after_current_range_mode": after_raw,
+            "off_ms": off_ms,
+            "settle_ms": settle_ms,
+            "control_topic": topic,
+        }
+
+    def _current_range_mode_name(self, mode: Any) -> str:
+        if isinstance(mode, str):
+            return mode
+        return {
+            0: "off",
+            4: "auto",
+            5: "manual",
+            6: "test_dir",
+            7: "test_seq",
+        }.get(int(mode), str(mode))
+
+    def _validate_ms(self, value: int, name: str, max_ms: int) -> int:
+        value = int(value)
+        if value < 0:
+            raise JoulescopeMcpError(f"{name} must be >= 0")
+        if value > max_ms:
+            raise JoulescopeMcpError(f"{name} must be <= {max_ms}")
+        return value
 
     def record_jls(
         self,
@@ -488,4 +611,11 @@ class Js220Service:
 def compact_samples(samples: Iterable[dict[str, Any]], field: str = "charge_mAh") -> list[float]:
     """Return only one numeric field from measurement samples."""
 
-    return [float(sample[field]) for sample in samples]
+    result = []
+    path = field.split(".")
+    for sample in samples:
+        value: Any = sample
+        for key in path:
+            value = value[key]
+        result.append(float(value))
+    return result
