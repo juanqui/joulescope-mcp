@@ -23,19 +23,6 @@ Install directly from GitHub with `uvx`:
 }
 ```
 
-After a PyPI release, the config becomes shorter:
-
-```json
-{
-  "mcpServers": {
-    "joulescope-js220": {
-      "command": "uvx",
-      "args": ["joulescope-mcp"]
-    }
-  }
-}
-```
-
 If you prefer SSH, use the same Git install shape with the SSH URL:
 
 ```json
@@ -108,30 +95,9 @@ MCP JSON:
 }
 ```
 
-Use this today, before a PyPI release.
+Use this for normal installs.
 
-### Option 2: PyPI with `uvx`
-
-Use this after the package is released to PyPI:
-
-```bash
-uvx joulescope-mcp
-```
-
-MCP JSON:
-
-```json
-{
-  "mcpServers": {
-    "joulescope-js220": {
-      "command": "uvx",
-      "args": ["joulescope-mcp"]
-    }
-  }
-}
-```
-
-### Option 3: GitHub over SSH with `uvx`
+### Option 2: GitHub over SSH with `uvx`
 
 Use this if you prefer SSH or need GitHub SSH authentication:
 
@@ -139,7 +105,7 @@ Use this if you prefer SSH or need GitHub SSH authentication:
 uvx --from git+ssh://git@github.com/juanqui/joulescope-mcp.git joulescope-mcp
 ```
 
-### Option 4: Local Checkout
+### Option 3: Local Checkout
 
 Use this while developing or when you want to pin the MCP server to a local clone:
 
@@ -188,11 +154,11 @@ Choose one install command:
 
 | Current situation | Use this command in client configs |
 | --- | --- |
-| Before a PyPI release | `uvx --from git+https://github.com/juanqui/joulescope-mcp joulescope-mcp` |
-| After a PyPI release | `uvx joulescope-mcp` |
+| Normal GitHub install | `uvx --from git+https://github.com/juanqui/joulescope-mcp joulescope-mcp` |
+| GitHub over SSH | `uvx --from git+ssh://git@github.com/juanqui/joulescope-mcp.git joulescope-mcp` |
 | Local development checkout | `uv --directory /absolute/path/to/joulescope-mcp run joulescope-mcp` |
 
-The snippets below show the PyPI form because it is the cleanest long-term install path. Until the PyPI release, replace the command and args with the GitHub form.
+The snippets below show the normal GitHub install path.
 
 GitHub replacement:
 
@@ -223,19 +189,30 @@ Local checkout replacement:
 
 Configure only one always-on client for a physical JS220. Many desktop clients auto-start configured MCP servers, and the JS220 should not be shared between multiple MCP server processes.
 
+## Timeout Configuration
+
+`measure_energy` is a blocking hardware measurement. A 15 second measurement takes at least 15 seconds, plus JS220 startup and cleanup time. Configure MCP clients for a 5 minute tool timeout when they expose a timeout setting.
+
+Recommended values:
+
+- Tool call timeout: 300 seconds / 300,000 ms
+- Server startup timeout: 60 seconds / 60,000 ms
+
+If a client does not document a timeout setting, keep synchronous measurements short enough for that client or use a client with configurable MCP tool timeouts. A future async measurement API can avoid long single tool calls, but the current `measure_energy` call is synchronous by design.
+
 ### Claude Code
 
 Recommended global install:
 
 ```bash
-claude mcp add joulescope-js220 -- uvx joulescope-mcp
+claude mcp add joulescope-js220 -- uvx --from git+https://github.com/juanqui/joulescope-mcp joulescope-mcp
 claude mcp list
 ```
 
-GitHub install:
+Launch Claude Code with 5 minute MCP tool calls and a 60 second server startup timeout:
 
 ```bash
-claude mcp add joulescope-js220 -- uvx --from git+https://github.com/juanqui/joulescope-mcp joulescope-mcp
+MCP_TIMEOUT=60000 MCP_TOOL_TIMEOUT=300000 claude
 ```
 
 Project `.mcp.json`:
@@ -246,13 +223,17 @@ Project `.mcp.json`:
     "joulescope-js220": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["joulescope-mcp"]
+      "args": [
+        "--from",
+        "git+https://github.com/juanqui/joulescope-mcp",
+        "joulescope-mcp"
+      ]
     }
   }
 }
 ```
 
-Inside Claude Code, run `/mcp` to inspect server status.
+Inside Claude Code, run `/mcp` to inspect server status. `MCP_TIMEOUT` and `MCP_TOOL_TIMEOUT` are Claude Code process environment variables, not per-server `env` values.
 
 ### Claude Desktop
 
@@ -266,27 +247,25 @@ Edit:
   "mcpServers": {
     "joulescope-js220": {
       "command": "uvx",
-      "args": ["joulescope-mcp"]
+      "args": [
+        "--from",
+        "git+https://github.com/juanqui/joulescope-mcp",
+        "joulescope-mcp"
+      ]
     }
   }
 }
 ```
 
-Restart Claude Desktop after editing the file.
+Restart Claude Desktop after editing the file. Claude Desktop does not document a portable per-server timeout field in `claude_desktop_config.json`; if your launch environment supports MCP timeout environment variables, set `MCP_TOOL_TIMEOUT=300000` before starting Claude Desktop.
 
 ### Codex
 
 Recommended global install:
 
 ```bash
-codex mcp add joulescope-js220 -- uvx joulescope-mcp
-codex mcp list
-```
-
-GitHub install:
-
-```bash
 codex mcp add joulescope-js220 -- uvx --from git+https://github.com/juanqui/joulescope-mcp joulescope-mcp
+codex mcp list
 ```
 
 Direct `~/.codex/config.toml` entry:
@@ -294,8 +273,12 @@ Direct `~/.codex/config.toml` entry:
 ```toml
 [mcp_servers.joulescope-js220]
 command = "uvx"
-args = ["joulescope-mcp"]
+args = ["--from", "git+https://github.com/juanqui/joulescope-mcp", "joulescope-mcp"]
+startup_timeout_sec = 60
+tool_timeout_sec = 300
 ```
+
+The `codex mcp add` command creates the server entry. Edit `~/.codex/config.toml` afterward to add `startup_timeout_sec` and `tool_timeout_sec`.
 
 ### Cursor
 
@@ -314,13 +297,17 @@ Project config:
     "joulescope-js220": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["joulescope-mcp"]
+      "args": [
+        "--from",
+        "git+https://github.com/juanqui/joulescope-mcp",
+        "joulescope-mcp"
+      ]
     }
   }
 }
 ```
 
-Cursor also supports adding MCP servers from Settings. After changing the config, restart Cursor or refresh MCP tools from the MCP settings panel.
+Cursor also supports adding MCP servers from Settings. After changing the config, restart Cursor or refresh MCP tools from the MCP settings panel. Cursor does not currently document a portable `mcp.json` timeout field; if your Cursor build exposes a request/tool timeout in Settings, set it to 300 seconds.
 
 ### VS Code / GitHub Copilot Agent Mode
 
@@ -338,7 +325,11 @@ User config:
     "joulescope-js220": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["joulescope-mcp"]
+      "args": [
+        "--from",
+        "git+https://github.com/juanqui/joulescope-mcp",
+        "joulescope-mcp"
+      ]
     }
   }
 }
@@ -347,8 +338,10 @@ User config:
 Command-line install:
 
 ```bash
-code --add-mcp '{"name":"joulescope-js220","type":"stdio","command":"uvx","args":["joulescope-mcp"]}'
+code --add-mcp '{"name":"joulescope-js220","type":"stdio","command":"uvx","args":["--from","git+https://github.com/juanqui/joulescope-mcp","joulescope-mcp"]}'
 ```
+
+VS Code's MCP configuration reference does not document a per-server tool timeout field. Do not add unsupported timeout keys to `.vscode/mcp.json`; use shorter synchronous measurements if your Copilot host times out long calls.
 
 ### Windsurf
 
@@ -362,20 +355,24 @@ Edit:
   "mcpServers": {
     "joulescope-js220": {
       "command": "uvx",
-      "args": ["joulescope-mcp"]
+      "args": [
+        "--from",
+        "git+https://github.com/juanqui/joulescope-mcp",
+        "joulescope-mcp"
+      ]
     }
   }
 }
 ```
 
-Windsurf Cascade has a total enabled-tool limit. If you use many MCP servers, disable tools you do not need.
+Windsurf Cascade has a total enabled-tool limit. If you use many MCP servers, disable tools you do not need. Windsurf's public MCP docs do not document a portable timeout field in `mcp_config.json`; if your Windsurf build exposes a request/tool timeout setting, set it to 300 seconds.
 
 ### Cline
 
 CLI install:
 
 ```bash
-cline mcp add joulescope-js220 -- uvx joulescope-mcp
+cline mcp add joulescope-js220 -- uvx --from git+https://github.com/juanqui/joulescope-mcp joulescope-mcp
 ```
 
 Manual config:
@@ -388,7 +385,12 @@ Manual config:
   "mcpServers": {
     "joulescope-js220": {
       "command": "uvx",
-      "args": ["joulescope-mcp"],
+      "args": [
+        "--from",
+        "git+https://github.com/juanqui/joulescope-mcp",
+        "joulescope-mcp"
+      ],
+      "timeout": 300,
       "disabled": false,
       "alwaysAllow": []
     }
@@ -401,7 +403,7 @@ Manual config:
 Most local MCP clients should use stdio. If you need streamable HTTP:
 
 ```bash
-uvx joulescope-mcp --transport streamable-http --mount-path /mcp
+uvx --from git+https://github.com/juanqui/joulescope-mcp joulescope-mcp --transport streamable-http --mount-path /mcp
 ```
 
 ## Troubleshooting
